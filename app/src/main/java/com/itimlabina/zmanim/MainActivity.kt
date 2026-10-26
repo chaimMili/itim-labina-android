@@ -2,11 +2,14 @@ package com.itimlabina.zmanim
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -39,6 +42,8 @@ import com.google.android.gms.location.LocationServices
 import com.kosherjava.zmanim.hebrewcalendar.HebrewDateFormatter
 import com.kosherjava.zmanim.hebrewcalendar.JewishCalendar
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -59,6 +64,59 @@ class MainActivity : ComponentActivity() {
                     ItimLaBinaMainScreen()
                 }
             }
+        }
+    }
+}
+
+// מבנה נתונים לתזכורת/אירוע ביומן
+data class CalendarReminder(
+    val id: String,
+    val dateKey: String,
+    val title: String,
+    val timeStr: String, // HH:mm
+    val timestamp: Long
+)
+
+class CalendarReminderReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val title = intent.getStringExtra("reminder_title") ?: "תזכורת מיומן עיתים לבינה"
+        val timeStr = intent.getStringExtra("reminder_time") ?: ""
+        ZmanAlarmReceiver.triggerNotification(context, title, timeStr, 0)
+    }
+
+    companion object {
+        fun scheduleReminder(context: Context, reminder: CalendarReminder) {
+            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(context, CalendarReminderReceiver::class.java).apply {
+                putExtra("reminder_title", reminder.title)
+                putExtra("reminder_time", reminder.timeStr)
+            }
+            val pi = PendingIntent.getBroadcast(
+                context,
+                reminder.id.hashCode(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            if (reminder.timestamp > System.currentTimeMillis()) {
+                try {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, reminder.timestamp, pi)
+                } catch (_: SecurityException) {
+                    am.set(AlarmManager.RTC_WAKEUP, reminder.timestamp, pi)
+                }
+            }
+        }
+
+        fun cancelReminder(context: Context, reminderId: String) {
+            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(context, CalendarReminderReceiver::class.java)
+            val pi = PendingIntent.getBroadcast(
+                context,
+                reminderId.hashCode(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            am.cancel(pi)
         }
     }
 }
@@ -250,7 +308,7 @@ fun FullHebrewCalendarTab(
     val timeZone = TimeZone.getTimeZone("Asia/Jerusalem")
     val hebFormatter = remember { HebrewDateFormatter().apply { isHebrewFormat = true } }
     var monthOffset by remember { mutableIntStateOf(0) }
-    val prefs = remember { context.getSharedPreferences("ZmanimNotes", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences("ZmanimReminders", Context.MODE_PRIVATE) }
 
     val displayCal = remember(monthOffset) {
         Calendar.getInstance(timeZone).apply { add(Calendar.MONTH, monthOffset) }
@@ -276,38 +334,88 @@ fun FullHebrewCalendarTab(
 
     val dateKeyFormat = SimpleDateFormat("yyyy_MM_dd", Locale.getDefault()).apply { this.timeZone = timeZone }
     val selectedDateKey = dateKeyFormat.format(selectedCal.time)
-    var noteText by remember(selectedDateKey) {
-        mutableStateOf(prefs.getString(selectedDateKey, "") ?: "")
+
+    // שליפת רשימת תזכורות ליום הנבחר מ-JSON
+    fun loadReminders(dateKey: String): List<CalendarReminder> {
+        val jsonStr = prefs.getString(dateKey, "[]") ?: "[]"
+        val list = mutableListOf<CalendarReminder>()
+        try {
+            val arr = JSONArray(jsonStr)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                list.add(
+                    CalendarReminder(
+                        id = obj.getString("id"),
+                        dateKey = obj.getString("dateKey"),
+                        title = obj.getString("title"),
+                        timeStr = obj.getString("timeStr"),
+                        timestamp = obj.getLong("timestamp")
+                    )
+                )
+            }
+        } catch (_: Exception) {}
+        return list
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Button(
-                onClick = { monthOffset -= 1 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B))
-            ) { Text("▶ חודש קודם", color = Color.White) }
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.clickable {
-                    monthOffset = 0
-                    onSelectDay(System.currentTimeMillis())
-                }
-            ) {
-                Text(monthTitle, color = Color(0xFFFBBF24), fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                if (monthOffset != 0) {
-                    Text("לחץ לחזרה להיום", color = Color(0xFF94A3B8), fontSize = 10.sp)
-                }
+    fun saveReminders(dateKey: String, reminders: List<CalendarReminder>) {
+        val arr = JSONArray()
+        for (r in reminders) {
+            val obj = JSONObject().apply {
+                put("id", r.id)
+                put("dateKey", r.dateKey)
+                put("title", r.title)
+                put("timeStr", r.timeStr)
+                put("timestamp", r.timestamp)
             }
+            arr.put(obj)
+        }
+        prefs.edit().putString(dateKey, arr.toString()).apply()
+    }
 
-            Button(
-                onClick = { monthOffset += 1 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B))
-            ) { Text("חודש הבא ◀", color = Color.White) }
+    var remindersList by remember(selectedDateKey) {
+        mutableStateOf(loadReminders(selectedDateKey))
+    }
+
+    var newTitle by remember { mutableStateOf("") }
+    var newTimeStr by remember { mutableStateOf("09:00") }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // שורת כותרת חודש וניווט מסודרת שלא תימרח
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = { monthOffset -= 1 },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) { Text("▶ קודם", color = Color.White, fontSize = 12.sp) }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable {
+                        monthOffset = 0
+                        onSelectDay(System.currentTimeMillis())
+                    }
+                ) {
+                    Text(monthTitle, color = Color(0xFFFBBF24), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    if (monthOffset != 0) {
+                        Text("חזור להיום", color = Color(0xFF94A3B8), fontSize = 9.sp)
+                    }
+                }
+
+                Button(
+                    onClick = { monthOffset += 1 },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) { Text("הבא ◀", color = Color.White, fontSize = 12.sp) }
+            }
         }
 
         val weekDays = listOf("א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳")
@@ -330,7 +438,7 @@ fun FullHebrewCalendarTab(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1.1f),
+                .weight(1.0f),
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             for (week in 0 until weeksCount) {
@@ -349,7 +457,8 @@ fun FullHebrewCalendarTab(
                             val cellJewish = JewishCalendar(cellCal).apply { inIsrael = true }
                             val yomTov = hebFormatter.formatYomTov(cellJewish)
                             val cellKey = dateKeyFormat.format(cellCal.time)
-                            val hasNote = !(prefs.getString(cellKey, "").isNullOrEmpty())
+                            val dayReminders = loadReminders(cellKey)
+                            val hasReminders = dayReminders.isNotEmpty()
 
                             val isToday = cellCal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR) &&
                                           cellCal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR)
@@ -382,18 +491,18 @@ fun FullHebrewCalendarTab(
                                         Text(
                                             text = hebFormatter.formatHebrewNumber(hebDayNumber),
                                             color = if (isShabbat && !isSelected) Color(0xFFFBBF24) else Color.White,
-                                            fontSize = 13.sp,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold
                                         )
-                                        if (hasNote) {
+                                        if (hasReminders) {
                                             Spacer(modifier = Modifier.width(2.dp))
-                                            Text("📌", fontSize = 8.sp)
+                                            Text("⏰", fontSize = 7.sp)
                                         }
                                     }
                                     Text(
                                         text = "${cellCal.get(Calendar.DAY_OF_MONTH)}/${cellCal.get(Calendar.MONTH) + 1}",
                                         color = Color(0xFF94A3B8),
-                                        fontSize = 9.sp
+                                        fontSize = 8.sp
                                     )
                                     if (yomTov.isNotEmpty() || cellJewish.isRoshChodesh) {
                                         Text(
@@ -413,42 +522,137 @@ fun FullHebrewCalendarTab(
             }
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
+        // פאנל יומן ותזכורות לפי שעות ליום הנבחר
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
             shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.fillMaxWidth().weight(0.9f)
+            modifier = Modifier.fillMaxWidth().weight(1.1f)
         ) {
-            Column(modifier = Modifier.padding(10.dp).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
+            Column(modifier = Modifier.padding(8.dp).fillMaxHeight()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val gregDateStr = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(selectedCal.time)
-                    Text("הערות ותזכורות ליום ($gregDateStr):", color = Color(0xFFFBBF24), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = onOpenFullDayZmanim) {
+                    Text("תזכורות ואירועים ($gregDateStr):", color = Color(0xFFFBBF24), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = onOpenFullDayZmanim, contentPadding = PaddingValues(0.dp)) {
                         Text("זמני היום ◀", color = Color(0xFF38BDF8), fontSize = 11.sp)
                     }
                 }
 
-                OutlinedTextField(
-                    value = noteText,
-                    onValueChange = { newVal ->
-                        noteText = newVal
-                        prefs.edit().putString(selectedDateKey, newVal).apply()
-                    },
-                    placeholder = { Text("הוסף הערה או תזכורת ליום זה (כמו ביומן)...", color = Color(0xFF64748B), fontSize = 11.sp) },
+                // שורת הוספת אירוע חדש עם שעה
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = newTimeStr,
+                        onValueChange = { newTimeStr = it },
+                        label = { Text("שעה", fontSize = 9.sp) },
+                        modifier = Modifier.width(65.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFFFBBF24),
+                            unfocusedBorderColor = Color(0xFF475569)
+                        ),
+                        textStyle = TextStyle(fontSize = 11.sp)
+                    )
+
+                    OutlinedTextField(
+                        value = newTitle,
+                        onValueChange = { newTitle = it },
+                        placeholder = { Text("הוסף אירוע/תזכורת...", color = Color(0xFF64748B), fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFFFBBF24),
+                            unfocusedBorderColor = Color(0xFF475569)
+                        ),
+                        textStyle = TextStyle(fontSize = 11.sp)
+                    )
+
+                    Button(
+                        onClick = {
+                            if (newTitle.isNotBlank()) {
+                                // חישוב טיימסטאפ לפי השעה שנבחרה
+                                val parts = newTimeStr.split(":")
+                                val hour = parts.getOrNull(0)?.toIntOrNull() ?: 9
+                                val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+
+                                val targetCal = (selectedCal.clone() as Calendar).apply {
+                                    set(Calendar.HOUR_OF_DAY, hour)
+                                    set(Calendar.MINUTE, minute)
+                                    set(Calendar.SECOND, 0)
+                                }
+
+                                val reminderId = System.currentTimeMillis().toString() + "_" + (0..999).random()
+                                val reminder = CalendarReminder(
+                                    id = reminderId,
+                                    dateKey = selectedDateKey,
+                                    title = newTitle.trim(),
+                                    timeStr = newTimeStr,
+                                    timestamp = targetCal.timeInMillis
+                                )
+
+                                val updated = remindersList + reminder
+                                remindersList = updated
+                                saveReminders(selectedDateKey, updated)
+                                CalendarReminderReceiver.scheduleReminder(context, reminder)
+
+                                newTitle = ""
+                                Toast.makeText(context, "התזכורת נקבעה בהצלחה!", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                    ) {
+                        Text("הוסף", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // רשימת התזכורות שנקבעו ליום זה
+                LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFFFBBF24),
-                        unfocusedBorderColor = Color(0xFF475569)
-                    ),
-                    textStyle = TextStyle(fontSize = 12.sp)
-                )
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    items(remindersList) { rem ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF334155)),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(text = rem.timeStr, color = Color(0xFFFBBF24), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(text = rem.title, color = Color.White, fontSize = 11.sp)
+                                }
+                                TextButton(
+                                    onClick = {
+                                        CalendarReminderReceiver.cancelReminder(context, rem.id)
+                                        val updated = remindersList.filter { it.id != rem.id }
+                                        remindersList = updated
+                                        saveReminders(selectedDateKey, updated)
+                                    },
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("מחק", color = Color(0xFFFCA5A5), fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
