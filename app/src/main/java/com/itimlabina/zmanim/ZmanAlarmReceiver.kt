@@ -7,6 +7,9 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import java.util.Calendar
@@ -16,37 +19,67 @@ class ZmanAlarmReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra("zman_title") ?: "זמן הלכתי מתקרב"
         val timeStr = intent.getStringExtra("zman_time") ?: ""
         val minutesBefore = intent.getIntExtra("minutes_before", 10)
-
-        val channelId = "itim_labina_alerts"
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "התראות זמני היום - עיתים לבינה",
-                NotificationManager.IMPORTANCE_HIGH
-            )
-            nm.createNotificationChannel(channel)
-        }
-
-        val bodyText = if (minutesBefore == 0) {
-            "כעת הגיע זמן $title ($timeStr)"
-        } else {
-            "בעוד $minutesBefore דקות יגיע זמן $title (בשעה $timeStr)"
-        }
-
-        val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("תזכורת לוח עיתים לבינה: $title")
-            .setContentText(bodyText)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
-
-        nm.notify(title.hashCode(), notification)
+        triggerNotification(context, title, timeStr, minutesBefore)
     }
 
     companion object {
+        fun getSelectedSoundUri(soundType: String): Uri? {
+            return when (soundType) {
+                "alarm" -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                "ringtone" -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                "silent" -> null
+                else -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            }
+        }
+
+        fun triggerNotification(context: Context, title: String, timeStr: String, minutesBefore: Int) {
+            val prefs = context.getSharedPreferences("ZmanimPrefs", Context.MODE_PRIVATE)
+            val soundType = prefs.getString("sound_type", "notification") ?: "notification"
+            val vibrate = prefs.getBoolean("vibrate_enabled", true)
+
+            val soundUri = getSelectedSoundUri(soundType)
+            val channelId = "itim_labina_channel_${soundType}_${vibrate}"
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    channelId,
+                    "התראות זמני היום ($soundType)",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    enableVibration(vibrate)
+                    if (soundUri != null) {
+                        val attrs = AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                        setSound(soundUri, attrs)
+                    } else {
+                        setSound(null, null)
+                    }
+                }
+                nm.createNotificationChannel(channel)
+            }
+
+            val bodyText = if (minutesBefore == 0) {
+                "כעת הגיע זמן $title ($timeStr)"
+            } else {
+                "בעוד $minutesBefore דקות יגיע זמן $title (בשעה $timeStr)"
+            }
+
+            val builder = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("לוח עיתים לבינה: $title")
+                .setContentText(bodyText)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+
+            if (soundUri != null) builder.setSound(soundUri)
+            if (vibrate) builder.setVibrate(longArrayOf(0, 400, 200, 400))
+
+            nm.notify(title.hashCode(), builder.build())
+        }
+
         fun scheduleAllEnabledAlarms(context: Context) {
             val prefs = context.getSharedPreferences("ZmanimPrefs", Context.MODE_PRIVATE)
             val loc = ZmanimHelper.getSavedLocation(context)

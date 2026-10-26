@@ -24,11 +24,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Home Screen Interactive Month Calendar + Zmanim Widget -->
+        <!-- ווידג'ט 1: משולב (לוח שנה + זמנים) -->
         <receiver
             android:name=".HebrewCalendarWidgetReceiver"
             android:exported="true"
-            android:label="לוח שנה עברי וזמנים - עיתים לבינה">
+            android:label="עיתים לבינה: לוח חודשי + זמנים">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -37,7 +37,32 @@
                 android:resource="@xml/hebrew_calendar_widget_info" />
         </receiver>
 
-        <!-- Notification Alarm Receiver -->
+        <!-- ווידג'ט 2: לוח שנה עברי בלבד (נמתח לגודל המסך) -->
+        <receiver
+            android:name=".CalendarOnlyWidgetReceiver"
+            android:exported="true"
+            android:label="עיתים לבינה: לוח שנה עברי בלבד">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_calendar_only_info" />
+        </receiver>
+
+        <!-- ווידג'ט 3: זמני היום בלבד -->
+        <receiver
+            android:name=".ZmanimOnlyWidgetReceiver"
+            android:exported="true"
+            android:label="עיתים לבינה: זמני היום בלבד">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_zmanim_only_info" />
+        </receiver>
+
         <receiver
             android:name=".ZmanAlarmReceiver"
             android:exported="false" />

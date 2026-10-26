@@ -60,14 +60,15 @@ object ZmanimHelper {
             .apply()
     }
 
-    fun calculateDailyZmanim(loc: CityLocation, calendar: Calendar): List<ZmanItem> {
+    fun calculateDailyZmanim(loc: CityLocation, calendar: Calendar, showSeconds: Boolean = false): List<ZmanItem> {
         val tz = TimeZone.getTimeZone("Asia/Jerusalem")
         val geo = GeoLocation(loc.name, loc.lat, loc.lng, loc.elevation, tz)
         val zc = ComplexZmanimCalendar(geo).apply {
             astronomicalCalculator = NOAACalculator()
             this.calendar = calendar
         }
-        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault()).apply { timeZone = tz }
+        val pattern = if (showSeconds) "HH:mm:ss" else "HH:mm"
+        val fmt = SimpleDateFormat(pattern, Locale.getDefault()).apply { timeZone = tz }
         fun f(d: Date?): String = if (d != null) fmt.format(d) else "--:--"
 
         return listOf(
@@ -94,7 +95,8 @@ object ZmanimHelper {
         val jCal = JewishCalendar(calendar).apply { inIsrael = true }
         val hf = HebrewDateFormatter().apply { isHebrewFormat = true }
         val dateStr = hf.format(jCal)
-        val parasha = hf.formatYomTov(jCal).ifEmpty { hf.formatParsha(jCal) }
+        val yomTov = hf.formatYomTov(jCal)
+        val parasha = if (yomTov.isNotEmpty()) yomTov else hf.formatParsha(jCal)
         return Pair(dateStr, parasha)
     }
 }
