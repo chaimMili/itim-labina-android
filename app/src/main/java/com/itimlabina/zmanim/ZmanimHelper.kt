@@ -94,7 +94,7 @@ object ZmanimHelper {
         val jCal = JewishCalendar(calendar).apply { inIsrael = true }
         val hf = HebrewDateFormatter().apply { isHebrewFormat = true }
         val dateStr = hf.format(jCal)
-        val parasha = hf.formatYomTov(jCal).ifEmpty { hf.formatParasha(jCal) }
+        val parasha = hf.formatYomTov(jCal).ifEmpty { hf.formatParsha(jCal) }
         return Pair(dateStr, parasha)
     }
 }

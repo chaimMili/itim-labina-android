@@ -280,7 +280,7 @@ class HebrewCalendarGlanceWidget : GlanceAppWidget() {
         fun fmt(d: Date?): String = if (d != null) timeFmt.format(d) else "--:--"
 
         val parashaOrHoliday = hebFormatter.formatYomTov(jCal).ifEmpty {
-            hebFormatter.formatParasha(jCal)
+            hebFormatter.formatParsha(jCal)
         }
 
         Column(
