@@ -189,7 +189,7 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                         text = monthTitle,
                         style = TextStyle(
                             color = ColorProvider(Color(0xFFFBBF24)),
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
                     )

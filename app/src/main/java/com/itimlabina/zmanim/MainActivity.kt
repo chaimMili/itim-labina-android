@@ -1,4 +1,3 @@
-import androidx.compose.ui.text.TextStyle
 package com.itimlabina.zmanim
 
 import android.Manifest
@@ -29,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
@@ -270,14 +270,10 @@ fun FullHebrewCalendarTab(
     val daysInHebrewMonth = firstDayJewish.daysInJewishMonth
     val startDayOfWeek = firstDayCal.get(Calendar.DAY_OF_WEEK)
     
-    // פורמט חודש לועזי
     val gregMonthFmt = SimpleDateFormat("MMMM yyyy", Locale("he"))
-    val gregMonthStr = gregMonthFmt.format(displayCal.time)
-    val monthTitle = "${hebFormatter.formatMonth(firstDayJewish)} ${hebFormatter.formatHebrewNumber(firstDayJewish.jewishYear)} • $gregMonthStr"
-    
+    val monthTitle = "${hebFormatter.formatMonth(firstDayJewish)} ${hebFormatter.formatHebrewNumber(firstDayJewish.jewishYear)} • ${gregMonthFmt.format(displayCal.time)}"
     val todayCal = remember { Calendar.getInstance(timeZone) }
 
-    // ניהול הערות ליום הנבחר
     val dateKeyFormat = SimpleDateFormat("yyyy_MM_dd", Locale.getDefault()).apply { this.timeZone = timeZone }
     val selectedDateKey = dateKeyFormat.format(selectedCal.time)
     var noteText by remember(selectedDateKey) {
@@ -419,7 +415,6 @@ fun FullHebrewCalendarTab(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // אזור הערות ותזכורות ליום הנבחר
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
             shape = RoundedCornerShape(10.dp),
