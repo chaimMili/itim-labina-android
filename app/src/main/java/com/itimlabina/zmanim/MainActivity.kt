@@ -1,3 +1,4 @@
+import androidx.compose.ui.text.TextStyle
 package com.itimlabina.zmanim
 
 import android.Manifest
