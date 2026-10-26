@@ -4,7 +4,9 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -146,7 +148,6 @@ fun ItimLaBinaMainScreen() {
                 .padding(padding)
                 .padding(14.dp)
         ) {
-            // Header Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                 shape = RoundedCornerShape(16.dp),
@@ -266,7 +267,6 @@ fun FullHebrewCalendarTab(
     val todayCal = remember { Calendar.getInstance(timeZone) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // סרגל ניווט בין חודשים עבריים
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -296,7 +296,6 @@ fun FullHebrewCalendarTab(
             ) { Text("חודש הבא ◀", color = Color.White) }
         }
 
-        // שורת ימי השבוע
         val weekDays = listOf("א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳")
         Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
             weekDays.forEach { d ->
@@ -311,7 +310,6 @@ fun FullHebrewCalendarTab(
             }
         }
 
-        // רשת ימי החודש העברי (מתפרסת דינמית)
         val totalCells = (startDayOfWeek - 1) + daysInHebrewMonth
         val weeksCount = ((totalCells + 6) / 7).coerceIn(4, 6)
 
@@ -395,7 +393,6 @@ fun FullHebrewCalendarTab(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // תקציר זמני היום לתאריך שנבחר בלוח השנה
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
             shape = RoundedCornerShape(12.dp),
@@ -557,18 +554,28 @@ fun SettingsAndLocationTab(
     onRequestGps: () -> Unit
 ) {
     val prefs = remember { context.getSharedPreferences("ZmanimPrefs", Context.MODE_PRIVATE) }
-    var soundType by remember { mutableStateOf(prefs.getString("sound_type", "notification") ?: "notification") }
+    var soundType by remember { mutableStateOf(prefs.getString("sound_type", "itim_custom") ?: "itim_custom") }
     var vibrateEnabled by remember { mutableStateOf(prefs.getBoolean("vibrate_enabled", true)) }
 
     val soundOptions = listOf(
-        "notification" to "צליל התראה רגיל",
-        "alarm" to "צליל שעון מעורר חזק",
-        "ringtone" to "צלצול טלפון",
-        "silent" to "שקט (ללא צליל)"
+        "itim_custom" to "🎶 צליל מיוחד: פעימת עיתים לבינה",
+        "notification" to "🔔 צליל התראה רגיל במערכת",
+        "alarm" to "⏰ צליל שעון מעורר",
+        "ringtone" to "📞 צלצול שיחה",
+        "silent" to "קט (ללא צליל)"
     )
 
+    // משתנה סטטי כדי שנוכל לעצור את הצליל הקודם ברגע שעוברים לאחר
+    val currentMediaPlayer = remember { mutableStateOf<MediaPlayer?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            currentMediaPlayer.value?.release()
+            currentMediaPlayer.value = null
+        }
+    }
+
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // 1. כרטיס הגדרות צלילים ותצוגה
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
@@ -579,7 +586,7 @@ fun SettingsAndLocationTab(
                     Text("🔊 הגדרות צלילי התראות ותצוגה", color = Color(0xFFFBBF24), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Text("בחר סוג צליל להתראות זמני היום:", color = Color(0xFFCBD5E1), fontSize = 13.sp)
+                    Text("בחר צליל התראה (לחיצה תשמע את הצליל מיד):", color = Color(0xFFCBD5E1), fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(6.dp))
 
                     soundOptions.forEach { (key, label) ->
@@ -595,9 +602,23 @@ fun SettingsAndLocationTab(
                                 .clickable {
                                     soundType = key
                                     prefs.edit().putString("sound_type", key).apply()
-                                    val uri = ZmanAlarmReceiver.getSelectedSoundUri(key)
-                                    if (uri != null) {
-                                        RingtoneManager.getRingtone(context, uri)?.play()
+
+                                    // עצירת כל צליל קודם שמתנגן כדי שלא יתערבבו
+                                    try {
+                                        currentMediaPlayer.value?.stop()
+                                        currentMediaPlayer.value?.release()
+                                        currentMediaPlayer.value = null
+                                    } catch (_: Exception) {}
+
+                                    if (key != "silent") {
+                                        val uri = ZmanAlarmReceiver.getSelectedSoundUri(context, key)
+                                        if (uri != null) {
+                                            try {
+                                                val mp = MediaPlayer.create(context, uri)
+                                                mp?.start()
+                                                currentMediaPlayer.value = mp
+                                            } catch (_: Exception) {}
+                                        }
                                     }
                                 }
                                 .padding(10.dp),
@@ -605,7 +626,7 @@ fun SettingsAndLocationTab(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(label, color = Color.White, fontSize = 14.sp)
-                            Text(if (isSelected) "✅ נבחר" else "השמע ובחר", color = Color(0xFFFBBF24), fontSize = 12.sp)
+                            Text(if (isSelected) "✅ נבחר" else "השמע", color = Color(0xFFFBBF24), fontSize = 12.sp)
                         }
                     }
 
@@ -659,7 +680,6 @@ fun SettingsAndLocationTab(
             }
         }
 
-        // 2. כרטיס GPS ומיקום
         item {
             Button(
                 onClick = onRequestGps,

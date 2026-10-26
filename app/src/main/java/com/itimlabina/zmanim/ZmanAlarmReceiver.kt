@@ -23,28 +23,32 @@ class ZmanAlarmReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        fun getSelectedSoundUri(soundType: String): Uri? {
+        fun getSelectedSoundUri(context: Context, soundType: String): Uri? {
             return when (soundType) {
                 "alarm" -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 "ringtone" -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
                 "silent" -> null
+                "itim_custom" -> {
+                    // ברירת מחדל לאזעקת שעון מעורר של המכשיר אם מותאם אישית
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                }
                 else -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
             }
         }
 
         fun triggerNotification(context: Context, title: String, timeStr: String, minutesBefore: Int) {
             val prefs = context.getSharedPreferences("ZmanimPrefs", Context.MODE_PRIVATE)
-            val soundType = prefs.getString("sound_type", "notification") ?: "notification"
+            val soundType = prefs.getString("sound_type", "itim_custom") ?: "itim_custom"
             val vibrate = prefs.getBoolean("vibrate_enabled", true)
 
-            val soundUri = getSelectedSoundUri(soundType)
+            val soundUri = getSelectedSoundUri(context, soundType)
             val channelId = "itim_labina_channel_${soundType}_${vibrate}"
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val channel = NotificationChannel(
                     channelId,
-                    "התראות זמני היום ($soundType)",
+                    "התראות זמני היום",
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     enableVibration(vibrate)
