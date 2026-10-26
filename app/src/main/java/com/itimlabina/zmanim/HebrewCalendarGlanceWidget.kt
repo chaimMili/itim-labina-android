@@ -497,7 +497,6 @@ class SelectDayAction : ActionCallback {
     override suspend fun onAction(
         context: Context,
         glanceId: GlanceId,
-        parameters: Action릭터Id,
         parameters: ActionParameters
     ) {
         val dayMillis = parameters[PARAM_DAY_MILLIS] ?: return
