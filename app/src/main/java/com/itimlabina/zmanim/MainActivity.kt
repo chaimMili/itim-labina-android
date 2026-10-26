@@ -38,7 +38,9 @@ import com.google.android.gms.location.LocationServices
 import com.kosherjava.zmanim.hebrewcalendar.HebrewDateFormatter
 import com.kosherjava.zmanim.hebrewcalendar.JewishCalendar
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 import java.util.TimeZone
 
 class MainActivity : ComponentActivity() {
@@ -201,6 +203,7 @@ fun ItimLaBinaMainScreen() {
             when (currentTab) {
                 0 -> ZmanimListTab(zmanimList)
                 1 -> FullHebrewCalendarTab(
+                    context = context,
                     selectedCal = selectedCal,
                     zmanimList = zmanimList,
                     onSelectDay = { newMillis -> selectedTimeMillis = newMillis },
@@ -237,6 +240,7 @@ fun ItimLaBinaMainScreen() {
 
 @Composable
 fun FullHebrewCalendarTab(
+    context: Context,
     selectedCal: Calendar,
     zmanimList: List<ZmanItem>,
     onSelectDay: (Long) -> Unit,
@@ -245,6 +249,7 @@ fun FullHebrewCalendarTab(
     val timeZone = TimeZone.getTimeZone("Asia/Jerusalem")
     val hebFormatter = remember { HebrewDateFormatter().apply { isHebrewFormat = true } }
     var monthOffset by remember { mutableIntStateOf(0) }
+    val prefs = remember { context.getSharedPreferences("ZmanimNotes", Context.MODE_PRIVATE) }
 
     val displayCal = remember(monthOffset) {
         Calendar.getInstance(timeZone).apply { add(Calendar.MONTH, monthOffset) }
@@ -263,12 +268,24 @@ fun FullHebrewCalendarTab(
 
     val daysInHebrewMonth = firstDayJewish.daysInJewishMonth
     val startDayOfWeek = firstDayCal.get(Calendar.DAY_OF_WEEK)
-    val monthTitle = "${hebFormatter.formatMonth(firstDayJewish)} ${hebFormatter.formatHebrewNumber(firstDayJewish.jewishYear)}"
+    
+    // פורמט חודש לועזי
+    val gregMonthFmt = SimpleDateFormat("MMMM yyyy", Locale("he"))
+    val gregMonthStr = gregMonthFmt.format(displayCal.time)
+    val monthTitle = "${hebFormatter.formatMonth(firstDayJewish)} ${hebFormatter.formatHebrewNumber(firstDayJewish.jewishYear)} • $gregMonthStr"
+    
     val todayCal = remember { Calendar.getInstance(timeZone) }
+
+    // ניהול הערות ליום הנבחר
+    val dateKeyFormat = SimpleDateFormat("yyyy_MM_dd", Locale.getDefault()).apply { this.timeZone = timeZone }
+    val selectedDateKey = dateKeyFormat.format(selectedCal.time)
+    var noteText by remember(selectedDateKey) {
+        mutableStateOf(prefs.getString(selectedDateKey, "") ?: "")
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -284,9 +301,9 @@ fun FullHebrewCalendarTab(
                     onSelectDay(System.currentTimeMillis())
                 }
             ) {
-                Text(monthTitle, color = Color(0xFFFBBF24), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(monthTitle, color = Color(0xFFFBBF24), fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 if (monthOffset != 0) {
-                    Text("לחץ לחזרה להיום", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                    Text("לחץ לחזרה להיום", color = Color(0xFF94A3B8), fontSize = 10.sp)
                 }
             }
 
@@ -297,7 +314,7 @@ fun FullHebrewCalendarTab(
         }
 
         val weekDays = listOf("א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳")
-        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
             weekDays.forEach { d ->
                 Text(
                     text = d,
@@ -305,7 +322,7 @@ fun FullHebrewCalendarTab(
                     textAlign = TextAlign.Center,
                     color = if (d == "ש׳") Color(0xFFFBBF24) else Color(0xFF94A3B8),
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
+                    fontSize = 12.sp
                 )
             }
         }
@@ -316,13 +333,13 @@ fun FullHebrewCalendarTab(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .weight(1.1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             for (week in 0 until weeksCount) {
                 Row(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     for (col in 0 until 7) {
                         val cellIndex = week * 7 + col
@@ -334,6 +351,8 @@ fun FullHebrewCalendarTab(
                             }
                             val cellJewish = JewishCalendar(cellCal).apply { inIsrael = true }
                             val yomTov = hebFormatter.formatYomTov(cellJewish)
+                            val cellKey = dateKeyFormat.format(cellCal.time)
+                            val hasNote = !(prefs.getString(cellKey, "").isNullOrEmpty())
 
                             val isToday = cellCal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR) &&
                                           cellCal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR)
@@ -351,23 +370,29 @@ fun FullHebrewCalendarTab(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
-                                    .background(bgColor, RoundedCornerShape(8.dp))
+                                    .background(bgColor, RoundedCornerShape(6.dp))
                                     .border(
                                         width = if (isSelected || isToday) 1.5.dp else 0.dp,
                                         color = if (isSelected) Color(0xFFFBBF24) else Color.Transparent,
-                                        shape = RoundedCornerShape(8.dp)
+                                        shape = RoundedCornerShape(6.dp)
                                     )
                                     .clickable { onSelectDay(cellCal.timeInMillis) }
-                                    .padding(2.dp),
+                                    .padding(1.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(
-                                        text = hebFormatter.formatHebrewNumber(hebDayNumber),
-                                        color = if (isShabbat && !isSelected) Color(0xFFFBBF24) else Color.White,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = hebFormatter.formatHebrewNumber(hebDayNumber),
+                                            color = if (isShabbat && !isSelected) Color(0xFFFBBF24) else Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        if (hasNote) {
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            Text("📌", fontSize = 8.sp)
+                                        }
+                                    }
                                     Text(
                                         text = "${cellCal.get(Calendar.DAY_OF_MONTH)}/${cellCal.get(Calendar.MONTH) + 1}",
                                         color = Color(0xFF94A3B8),
@@ -377,7 +402,7 @@ fun FullHebrewCalendarTab(
                                         Text(
                                             text = if (yomTov.isNotEmpty()) yomTov else "ר״ח",
                                             color = Color(0xFFFDE68A),
-                                            fontSize = 8.sp,
+                                            fontSize = 7.sp,
                                             maxLines = 1
                                         )
                                     }
@@ -391,36 +416,43 @@ fun FullHebrewCalendarTab(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
+        // אזור הערות ותזכורות ליום הנבחר
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().clickable { onOpenFullDayZmanim() }
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth().weight(0.9f)
         ) {
-            Column(modifier = Modifier.padding(10.dp)) {
+            Column(modifier = Modifier.padding(10.dp).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("זמני היום לתאריך הנבחר:", color = Color(0xFFFBBF24), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Text("לכל הזמנים ◀", color = Color(0xFF38BDF8), fontSize = 12.sp)
+                    val gregDateStr = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(selectedCal.time)
+                    Text("הערות ותזכורות ליום ($gregDateStr):", color = Color(0xFFFBBF24), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = onOpenFullDayZmanim) {
+                        Text("זמני היום ◀", color = Color(0xFF38BDF8), fontSize = 11.sp)
+                    }
                 }
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    val alot = zmanimList.find { it.id == "alot" }?.formattedTime ?: "--:--"
-                    val netz = zmanimList.find { it.id == "netz_elev" }?.formattedTime ?: "--:--"
-                    val shkia = zmanimList.find { it.id == "shkia" }?.formattedTime ?: "--:--"
-                    val tzeit = zmanimList.find { it.id == "tzeit_geonim" }?.formattedTime ?: "--:--"
 
-                    Text("עלות: $alot", color = Color.White, fontSize = 12.sp)
-                    Text("הנץ: $netz", color = Color.White, fontSize = 12.sp)
-                    Text("שקיעה: $shkia", color = Color.White, fontSize = 12.sp)
-                    Text("צאת: $tzeit", color = Color.White, fontSize = 12.sp)
-                }
+                OutlinedTextField(
+                    value = noteText,
+                    onValueChange = { newVal ->
+                        noteText = newVal
+                        prefs.edit().putString(selectedDateKey, newVal).apply()
+                    },
+                    placeholder = { Text("הוסף הערה או תזכורת ליום זה (כמו ביומן)...", color = Color(0xFF64748B), fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFFFBBF24),
+                        unfocusedBorderColor = Color(0xFF475569)
+                    ),
+                    textStyle = TextStyle(fontSize = 12.sp)
+                )
             }
         }
     }
@@ -562,10 +594,9 @@ fun SettingsAndLocationTab(
         "notification" to "🔔 צליל התראה רגיל במערכת",
         "alarm" to "⏰ צליל שעון מעורר",
         "ringtone" to "📞 צלצול שיחה",
-        "silent" to "קט (ללא צליל)"
+        "silent" to "שקט (ללא צליל)"
     )
 
-    // משתנה סטטי כדי שנוכל לעצור את הצליל הקודם ברגע שעוברים לאחר
     val currentMediaPlayer = remember { mutableStateOf<MediaPlayer?>(null) }
 
     DisposableEffect(Unit) {
@@ -603,7 +634,6 @@ fun SettingsAndLocationTab(
                                     soundType = key
                                     prefs.edit().putString("sound_type", key).apply()
 
-                                    // עצירת כל צליל קודם שמתנגן כדי שלא יתערבבו
                                     try {
                                         currentMediaPlayer.value?.stop()
                                         currentMediaPlayer.value?.release()

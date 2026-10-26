@@ -53,17 +53,14 @@ enum class WidgetDisplayMode {
     ZMANIM_ONLY
 }
 
-// 1. ווידג'ט משולב (לוח שנה + זמנים)
 class HebrewCalendarWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = BaseItimWidget(WidgetDisplayMode.COMBINED)
 }
 
-// 2. ווידג'ט לוח שנה בלבד (נמתח לכל גודל מסך)
 class CalendarOnlyWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = BaseItimWidget(WidgetDisplayMode.CALENDAR_ONLY)
 }
 
-// 3. ווידג'ט זמני היום בלבד
 class ZmanimOnlyWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = BaseItimWidget(WidgetDisplayMode.ZMANIM_ONLY)
 }
@@ -151,15 +148,14 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
         val daysInHebrewMonth = firstDayJewish.daysInJewishMonth
         val startDayOfWeek = firstDayCal.get(Calendar.DAY_OF_WEEK)
 
-        val monthTitle = "${hebFormatter.formatMonth(firstDayJewish)} ${hebFormatter.formatHebrewNumber(firstDayJewish.jewishYear)}"
+        val gregMonthFmt = SimpleDateFormat("MMMM yyyy", Locale("he"))
+        val monthTitle = "${hebFormatter.formatMonth(firstDayJewish)} ${hebFormatter.formatHebrewNumber(firstDayJewish.jewishYear)} • ${gregMonthFmt.format(displayCal.time)}"
         val todayCal = Calendar.getInstance(timeZone)
 
-        // חישוב מספר השבועות בפועל בחודש זה כדי שכל שורה תתפרס לגובה המסך באופן שווה
         val totalCellsUsed = (startDayOfWeek - 1) + daysInHebrewMonth
         val weeksCount = ((totalCellsUsed + 6) / 7).coerceIn(4, 6)
 
         Column(modifier = modifier) {
-            // כותרת החודש וניווט
             Row(
                 modifier = GlanceModifier.fillMaxWidth().padding(bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -193,7 +189,7 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                         text = monthTitle,
                         style = TextStyle(
                             color = ColorProvider(Color(0xFFFBBF24)),
-                            fontSize = 16.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
                     )
@@ -222,7 +218,6 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                 }
             }
 
-            // שורת ימי השבוע (מימין לשמאל)
             val weekDays = listOf("ש׳", "ו׳", "ה׳", "ד׳", "ג׳", "ב׳", "א׳")
             Row(modifier = GlanceModifier.fillMaxWidth().padding(bottom = 2.dp)) {
                 for (dayLabel in weekDays) {
@@ -239,7 +234,6 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                 }
             }
 
-            // שורות השבועות - כל שורה מקבלת defaultWeight() כך שהלוח נמתח אוטומטית לכל גודל מסך!
             for (week in 0 until weeksCount) {
                 Row(
                     modifier = GlanceModifier
@@ -292,12 +286,12 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                                         text = hebFormatter.formatHebrewNumber(hebDayNumber),
                                         style = TextStyle(
                                             color = ColorProvider(textColor),
-                                            fontSize = 13.sp,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                     )
                                     Text(
-                                        text = "${cellCal.get(Calendar.DAY_OF_MONTH)}",
+                                        text = "${cellCal.get(Calendar.DAY_OF_MONTH)}/${cellCal.get(Calendar.MONTH) + 1}",
                                         style = TextStyle(
                                             color = ColorProvider(Color(0xFF94A3B8)),
                                             fontSize = 9.sp
@@ -503,6 +497,7 @@ class SelectDayAction : ActionCallback {
     override suspend fun onAction(
         context: Context,
         glanceId: GlanceId,
+        parameters: Action릭터Id,
         parameters: ActionParameters
     ) {
         val dayMillis = parameters[PARAM_DAY_MILLIS] ?: return
