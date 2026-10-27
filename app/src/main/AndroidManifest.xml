@@ -19,12 +19,22 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- הוספת תזכורת מהווידג'ט: חלון נפרד שלא פותח את האפליקציה -->
+        <activity
+            android:name=".AddReminderActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Itim.Transparent"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- ווידג'ט 1: משולב (לוח שנה + זמנים) -->
         <receiver
@@ -68,6 +78,29 @@
         <receiver
             android:name=".ZmanAlarmReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".CalendarReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 </manifest>
