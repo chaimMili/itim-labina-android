@@ -45,7 +45,8 @@ import java.util.TimeZone
 private val MONTH_OFFSET_KEY = intPreferencesKey("month_offset")
 private val SELECTED_TIME_KEY = longPreferencesKey("selected_time_millis")
 private val PARAM_DELTA = ActionParameters.Key<Int>("delta")
-private val PARAM_DAY_MILLIS = ActionParameters.Key<Long>("day_millis")
+private val PARAM_DAY_MILLIS = ActionParameters.Key<Long>(IntentKeys.DAY_MILLIS)
+private val PARAM_OPEN_TAB = ActionParameters.Key<Int>(IntentKeys.OPEN_TAB)
 
 enum class WidgetDisplayMode {
     COMBINED,
@@ -108,6 +109,7 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                 }
                 WidgetDisplayMode.CALENDAR_ONLY -> {
                     ResponsiveCalendarGrid(
+                        context = context,
                         monthOffset = monthOffset,
                         selectedCal = selectedCal,
                         hebFormatter = hebFormatter,
@@ -116,6 +118,7 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                 }
                 WidgetDisplayMode.COMBINED -> {
                     ResponsiveCalendarGrid(
+                        context = context,
                         monthOffset = monthOffset,
                         selectedCal = selectedCal,
                         hebFormatter = hebFormatter,
@@ -130,6 +133,7 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
 
     @Composable
     private fun ResponsiveCalendarGrid(
+        context: Context,
         monthOffset: Int,
         selectedCal: Calendar,
         hebFormatter: HebrewDateFormatter,
@@ -149,7 +153,8 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
         val startDayOfWeek = firstDayCal.get(Calendar.DAY_OF_WEEK)
 
         val gregMonthFmt = SimpleDateFormat("MMMM yyyy", Locale("he"))
-        val monthTitle = "${hebFormatter.formatMonth(firstDayJewish)} ${hebFormatter.formatHebrewNumber(firstDayJewish.jewishYear)} • ${gregMonthFmt.format(displayCal.time)}"
+        val hebMonthTitle = "${hebFormatter.formatMonth(firstDayJewish)} ${hebFormatter.formatHebrewNumber(firstDayJewish.jewishYear)}"
+        val gregMonthTitle = gregMonthFmt.format(displayCal.time)
         val todayCal = Calendar.getInstance(timeZone)
 
         val totalCellsUsed = (startDayOfWeek - 1) + daysInHebrewMonth
@@ -186,15 +191,17 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = monthTitle,
+                        text = hebMonthTitle,
+                        maxLines = 1,
                         style = TextStyle(
                             color = ColorProvider(Color(0xFFFBBF24)),
-                            fontSize = 13.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
                     )
                     Text(
-                        text = if (monthOffset == 0) "לוח עיתים לבינה" else "לחץ לחזרה להיום",
+                        text = if (monthOffset == 0) gregMonthTitle else "$gregMonthTitle • חזרה להיום",
+                        maxLines = 1,
                         style = TextStyle(
                             color = ColorProvider(Color(0xFF94A3B8)),
                             fontSize = 10.sp
@@ -216,6 +223,10 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                 ) {
                     Text("▶", style = TextStyle(color = ColorProvider(Color.White), fontSize = 14.sp))
                 }
+
+                Spacer(modifier = GlanceModifier.width(6.dp))
+
+                AddReminderButton(selectedCal.timeInMillis)
             }
 
             val weekDays = listOf("ש׳", "ו׳", "ה׳", "ד׳", "ג׳", "ב׳", "א׳")
@@ -253,6 +264,9 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
 
                             val isToday = isSameDay(cellCal, todayCal)
                             val isSelected = isSameDay(cellCal, selectedCal)
+                            val hasReminders = ReminderStore
+                                .colorsForDay(context, ReminderStore.dateKey(cellCal.timeInMillis))
+                                .isNotEmpty()
                             val isShabbatOrYomTov = cellCal.get(Calendar.DAY_OF_WEEK) == Calendar.SATURDAY || cellJewish.isYomTovAssurBemelacha
 
                             val bgColor = when {
@@ -284,6 +298,7 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
                                         text = hebFormatter.formatHebrewNumber(hebDayNumber),
+                                        maxLines = 1,
                                         style = TextStyle(
                                             color = ColorProvider(textColor),
                                             fontSize = 12.sp,
@@ -292,11 +307,23 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                                     )
                                     Text(
                                         text = "${cellCal.get(Calendar.DAY_OF_MONTH)}/${cellCal.get(Calendar.MONTH) + 1}",
+                                        maxLines = 1,
                                         style = TextStyle(
                                             color = ColorProvider(Color(0xFF94A3B8)),
                                             fontSize = 9.sp
                                         )
                                     )
+                                    if (hasReminders) {
+                                        Text(
+                                            text = "•",
+                                            maxLines = 1,
+                                            style = TextStyle(
+                                                color = ColorProvider(if (isSelected) Color.White else Color(0xFF38BDF8)),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        )
+                                    }
                                 }
                             }
                         } else {
@@ -344,20 +371,24 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
             ) {
                 Text(
                     text = if (parasha.isNotEmpty()) "$parasha • ${loc.name}" else loc.name,
+                    maxLines = 1,
+                    modifier = GlanceModifier.defaultWeight(),
                     style = TextStyle(color = ColorProvider(Color(0xFFCBD5E1)), fontSize = 12.sp)
                 )
-                Spacer(modifier = GlanceModifier.defaultWeight())
                 Text(
                     text = hebFormatter.format(jCal),
+                    maxLines = 1,
                     style = TextStyle(color = ColorProvider(Color(0xFFFBBF24)), fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 )
+                Spacer(modifier = GlanceModifier.width(8.dp))
+                AddReminderButton(cal.timeInMillis)
             }
 
             Row(modifier = GlanceModifier.fillMaxWidth().defaultWeight(), verticalAlignment = Alignment.CenterVertically) {
                 ZmanCell("סזק״ש גר״א", fmt(zmanim.sofZmanShmaGRA), GlanceModifier.defaultWeight())
                 ZmanCell("סזק״ש מג״א", fmt(zmanim.sofZmanShmaMGA16Point1Degrees), GlanceModifier.defaultWeight())
                 ZmanCell("הנץ החמה", fmt(zmanim.sunrise), GlanceModifier.defaultWeight())
-                ZmanCell("עלות (16.1°)", fmt(zmanim.alos16Point1Degrees), GlanceModifier.defaultWeight())
+                ZmanCell("עלות השחר", fmt(zmanim.alos16Point1Degrees), GlanceModifier.defaultWeight())
             }
 
             Row(modifier = GlanceModifier.fillMaxWidth().defaultWeight(), verticalAlignment = Alignment.CenterVertically) {
@@ -399,7 +430,14 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                 .background(ColorProvider(Color(0xFF1E293B)))
                 .cornerRadius(12.dp)
                 .padding(8.dp)
-                .clickable(actionStartActivity<MainActivity>())
+                .clickable(
+                    actionStartActivity<MainActivity>(
+                        actionParametersOf(
+                            PARAM_OPEN_TAB to 1,
+                            PARAM_DAY_MILLIS to selectedCal.timeInMillis
+                        )
+                    )
+                )
         ) {
             Row(
                 modifier = GlanceModifier.fillMaxWidth().padding(bottom = 4.dp),
@@ -407,11 +445,13 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
             ) {
                 Text(
                     text = if (parashaOrHoliday.isNotEmpty()) "$parashaOrHoliday • ${loc.name}" else loc.name,
+                    maxLines = 1,
+                    modifier = GlanceModifier.defaultWeight(),
                     style = TextStyle(color = ColorProvider(Color(0xFF94A3B8)), fontSize = 11.sp)
                 )
-                Spacer(modifier = GlanceModifier.defaultWeight())
                 Text(
                     text = hebFormatter.format(jCal),
+                    maxLines = 1,
                     style = TextStyle(
                         color = ColorProvider(Color(0xFFFBBF24)),
                         fontSize = 12.sp,
@@ -433,8 +473,33 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
                 ZmanCell("רבינו תם", fmt(zmanim.tzais72Zmanis), GlanceModifier.defaultWeight())
                 ZmanCell("מנחה גדולה", fmt(zmanim.minchaGedola), GlanceModifier.defaultWeight())
                 ZmanCell("סזק״ש גר״א", fmt(zmanim.sofZmanShmaGRA), GlanceModifier.defaultWeight())
-                ZmanCell("עלות (16.1°)", fmt(zmanim.alos16Point1Degrees), GlanceModifier.defaultWeight())
+                ZmanCell("עלות השחר", fmt(zmanim.alos16Point1Degrees), GlanceModifier.defaultWeight())
             }
+        }
+    }
+
+    @Composable
+    private fun AddReminderButton(dayMillis: Long) {
+        Box(
+            modifier = GlanceModifier
+                .size(32.dp)
+                .background(ColorProvider(Color(0xFFD97706)))
+                .cornerRadius(16.dp)
+                .clickable(
+                    actionStartActivity<AddReminderActivity>(
+                        actionParametersOf(PARAM_DAY_MILLIS to dayMillis)
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "+",
+                style = TextStyle(
+                    color = ColorProvider(Color.White),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            )
         }
     }
 
@@ -446,10 +511,12 @@ class BaseItimWidget(private val mode: WidgetDisplayMode = WidgetDisplayMode.COM
         ) {
             Text(
                 text = label,
+                maxLines = 1,
                 style = TextStyle(color = ColorProvider(Color(0xFF94A3B8)), fontSize = 9.sp)
             )
             Text(
                 text = time,
+                maxLines = 1,
                 style = TextStyle(
                     color = ColorProvider(Color.White),
                     fontSize = 12.sp,
